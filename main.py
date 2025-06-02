@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI, RunConfig
+import chainlit as cl
 
 # Load environment variables
 load_dotenv()
@@ -33,20 +34,54 @@ config = RunConfig(
 
 # Define the agent
 agent = Agent(
-    name="PC Agent",
-    instructions=(
-        "You are 'SpecSmith', an expert AI in PC building. Guide users on choosing parts for any budget or use case. "
-        "Know about CPUs (AM4/5, LGA 1700), chipsets, GPUs, RAM (DDR4/5), PSU wattage & grades, storage (NVMe/SATA), "
-        "coolers, RGB cases, motherboards, and peripherals. Recommend optimized builds, explain terms simply, avoid "
-        "outdated hardware unless asked, and prioritize compatibility, performance, and future-proofing."
-    ),
+    name="PC Expert",
+    instructions = (
+    "You are 'TechSage', an intelligent and expert-level AI assistant specializing in computer hardware and custom PC building. "
+    "You have been trained in-depth by **Rahim Ali**, a Software Engineer with advanced expertise in PC hardware architecture, system compatibility, and component optimization. "
+    "When asked 'Who built you?', 'Who trained you?', or similar questions, respond professionally with: "
+    "'I was trained by Rahim Ali, a Software Engineer with deep knowledge in computer hardware and system design. "
+    "My core AI capabilities are powered by Google's Gemini model, which enables me to understand, reason, and respond intelligently to technical queries.' "
+    "Your primary responsibilities include: "
+    "1) Explaining computer components and related technologies in a clear, informative, and beginner-friendly manner—covering their functions, relevance, and performance. "
+    "2) Recommending optimized PC builds based on a user's budget and use case (such as gaming, content creation, productivity, etc.). "
+    "Always begin by asking for their intended purpose and budget, then suggest a well-balanced and compatible build. "
+    "You have extensive knowledge of modern hardware—CPUs (Intel, AMD), GPUs (NVIDIA, AMD), motherboards, RAM (DDR4/DDR5), storage (SATA SSD, NVMe), power supplies (with efficiency ratings), cases, coolers, and peripherals. "
+    "You are aware of up-to-date market trends, pricing, performance benchmarks, and component compatibility. "
+    "You avoid recommending outdated hardware unless the user requests it, and prioritize builds that offer future-proofing and strong value. "
+    "Maintain a helpful, professional tone throughout interactions, and adapt your explanations to the user's level of expertise."
+)
 )
 
-# Run the agent
-result = Runner.run_sync(
-    agent,
-    input="Hey PC Agent, I am Rahim Ali. I want to build a PC for gaming. Can you help me with a Ryzen build?",
-    run_config=config
-)
-
-print(result.final_output)
+#Chainlit Interface
+@cl.on_chat_start
+async def start():
+   cl.user_session.set("history", [])
+   await cl.Message(content="Hello, This is TechSage your PC Advisor, Ask me anything about Computer Hardware?").send()
+   
+@cl.on_message
+async def on_message(message: cl.Message):
+    
+    history = cl.user_session.get("history")
+    history.append({"role": "user", "content": message.content})
+    
+    # Create a step to show processing
+    async with cl.Step(name="Recommendation Engine", type="tool") as step:
+        # This will show a loading animation while the step is running
+        step.input = message.content
+        
+        # Get response from agent
+        result = await Runner.run(
+            agent,
+            input=history,
+            run_config=config
+        )
+        
+        # Update history
+        history.append({"role": "assistant", "content": result.final_output})
+        cl.user_session.set("history", history)
+        
+        # Set the step output
+        step.output = result.final_output
+    
+    # Send the final message
+    await cl.Message(content=result.final_output).send()
