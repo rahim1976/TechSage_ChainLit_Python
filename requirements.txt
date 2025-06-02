@@ -2,5 +2,4 @@ chainlit
 python-dotenv
 agents
 openai
-# Pin TensorFlow to version 1.15.5
 tensorflow==1.15.5
