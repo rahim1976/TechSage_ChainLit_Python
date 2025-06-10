@@ -1,3 +1,6 @@
+# Try These Prompt
+
+ # suggest me a used gaming pc under 800$ from newegg, i also do little bit web development task & gaming
 import os
 from dotenv import load_dotenv
 from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI, RunConfig
@@ -66,22 +69,36 @@ async def on_message(message: cl.Message):
     
     # Create a step to show processing
     async with cl.Step(name="Recommendation Engine", type="tool") as step:
-        # This will show a loading animation while the step is running
         step.input = message.content
         
-        # Get response from agent
-        result = await Runner.run(
+        # Create a message placeholder for streaming
+        msg = cl.Message(content="")
+        await msg.send()
+        
+
+        
+        # Get streamed response from agent
+        result = Runner.run_streamed(
             agent,
             input=history,
             run_config=config
         )
         
-        # Update history
-        history.append({"role": "assistant", "content": result.final_output})
+        # Stream the response
+        full_response = ""
+        async for event in result.stream_events():
+            if event.type == "raw_response_event" and hasattr(event.data, 'delta'):
+                delta = event.data.delta
+                full_response += delta
+                await msg.stream_token(delta)
+        
+        # Mark the message as complete
+        await msg.update()
+        
+        # Update history with the complete response
+        history.append({"role": "assistant", "content": full_response})
         cl.user_session.set("history", history)
         
-        # Set the step output
-        step.output = result.final_output
-    
-    # Send the final message
-    await cl.Message(content=result.final_output).send()
+        # Set the step output and mark it as complete
+        step.output = full_response
+        await step.update()
