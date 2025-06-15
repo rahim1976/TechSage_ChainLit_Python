@@ -2,9 +2,14 @@
 
  # suggest me a used gaming pc under 800$ from newegg, i also do little bit web development task & gaming
 import os
+import logging
 from dotenv import load_dotenv
 from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI, RunConfig
 import chainlit as cl
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -63,42 +68,48 @@ async def start():
    
 @cl.on_message
 async def on_message(message: cl.Message):
-    
-    history = cl.user_session.get("history")
-    history.append({"role": "user", "content": message.content})
-    
-    # Create a step to show processing
-    async with cl.Step(name="Recommendation Engine", type="tool") as step:
-        step.input = message.content
+    try:
+        history = cl.user_session.get("history")
+        history.append({"role": "user", "content": message.content})
         
-        # Create a message placeholder for streaming
-        msg = cl.Message(content="")
-        await msg.send()
-        
-
-        
-        # Get streamed response from agent
-        result = Runner.run_streamed(
-            agent,
-            input=history,
-            run_config=config
-        )
-        
-        # Stream the response
-        full_response = ""
-        async for event in result.stream_events():
-            if event.type == "raw_response_event" and hasattr(event.data, 'delta'):
-                delta = event.data.delta
-                full_response += delta
-                await msg.stream_token(delta)
-        
-        # Mark the message as complete
-        await msg.update()
-        
-        # Update history with the complete response
-        history.append({"role": "assistant", "content": full_response})
-        cl.user_session.set("history", history)
-        
-        # Set the step output and mark it as complete
-        step.output = full_response
-        await step.update()
+        # Create a step to show processing
+        async with cl.Step(name="Recommendation Engine", type="tool") as step:
+            step.input = message.content
+            
+            # Create a message placeholder for streaming
+            msg = cl.Message(content="")
+            await msg.send()
+            
+            logger.info("Starting streaming response...")
+            
+            # Get streamed response from agent
+            result = Runner.run_streamed(
+                agent,
+                input=history,
+                run_config=config
+            )
+            
+            # Stream the response
+            full_response = ""
+            async for event in result.stream_events():
+                if event.type == "raw_response_event" and hasattr(event.data, 'delta'):
+                    delta = event.data.delta
+                    full_response += delta
+                    await msg.stream_token(delta)
+                    logger.debug(f"Streamed token: {delta}")
+            
+            # Mark the message as complete
+            await msg.update()
+            logger.info("Streaming completed successfully")
+            
+            # Update history with the complete response
+            history.append({"role": "assistant", "content": full_response})
+            cl.user_session.set("history", history)
+            
+            # Set the step output and mark it as complete
+            step.output = full_response
+            await step.update()
+            
+    except Exception as e:
+        logger.error(f"Error during streaming: {str(e)}", exc_info=True)
+        await cl.Message(content=f"An error occurred while processing your request: {str(e)}").send()
